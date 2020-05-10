@@ -1,0 +1,37 @@
+OUT=$(pwd).nsum
+echo Output to $OUT
+nsum_gen *.nmon *.topas.csv >$OUT.gen
+echo general done
+nsum_cpu *.nmon *.topas.csv >$OUT.cpu
+echo cpu done
+nsum_ram *.nmon *.topas.csv >$OUT.ram
+echo ram done
+
+cat $OUT.cpu | grep -v  95percentile | awk -F , '
+        BEGIN { total=0 }
+        { total=total+$14; }
+        END { printf( " CPUtotal95th, %5.2f\n", total ) }' >$OUT.CPUtot
+        #{ total=total+$14; printf("new=%5.2f tot=%5.2f\n", $14, total)}
+
+cat $OUT.ram | grep -v  95percentile | awk -F , '
+        BEGIN { total=0 }
+        { total=total+$7; }
+        END { printf( " RAMtotal95th, %5.2f\n", total ) }' >$OUT.RAMtot
+        # { total=total+$7; printf("new=%5.2f tot=%5.2f\n", $7, total)}
+
+echo totals done
+
+
+echo General Info >$OUT.csv
+pwd  >>$OUT.csv
+cat $OUT.gen >>$OUT.csv
+echo >>$OUT.csv
+echo CPU >>$OUT.csv
+cat $OUT.cpu >>$OUT.csv
+cat $OUT.CPUtot >>$OUT.csv
+echo >>$OUT.csv
+echo RAM >>$OUT.csv
+cat $OUT.ram >>$OUT.csv
+cat $OUT.RAMtot >>$OUT.csv
+
+echo report done

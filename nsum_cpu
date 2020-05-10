@@ -1,0 +1,72 @@
+#!/usr/bin/ksh  
+
+echo nmonfile, snapshots, VP, E, VP:E, poolCPU, poolIdle, Weight, Capped, total, min, avg, max, 95percentile
+for file in $*
+do
+	printf "%s, " $file
+
+	head $file | grep AAA,AIX >/dev/null
+	ret=$?
+	if (( $ret != 0 ))
+	then
+		echo "skipping not AIX"
+		continue
+	fi
+
+	cat $file | grep ^LPAR,T  >tmp$$.phys.lpar
+	ret=$?
+	if (( $ret != 0 ))
+	then
+		echo "skipping as no LPAR records found"
+		continue
+	fi 
+
+	cat tmp$$.phys.lpar | awk -F , '
+	BEGIN { count=0; total=0; max=0; min=99999999; VP=0.0; poolCPU=0; poolIdle=0; W=0; cap=0;  }
+	{ count=count+1; total=total+$3; VP=$4; LCPU=$5; poolCPU=$6; E=$7; W=$8; poolIdle=$9; cap=$13; if($3 > max) { max=$3;}; if($3 < min) { min=$3;} }
+	END { printf( "%8d, %3d, %5.2f, %5.2f%%, %3d, %5.2f, %3d, %d, %8.2f, %5.2f, %5.2f, %5.2f", count, VP, E, (VP/E)*100, poolCPU, poolIdle, W, cap, total, min, total/count, max ) } '
+
+
+	integer RECORDS
+	integer PERCENTILE
+	RECORDS=`cat tmp$$.phys.lpar | wc -l `
+	PERCENTILE=$RECORDS-$RECORDS/20
+	cat tmp$$.phys.lpar | awk -F , '{ printf( " %5.2f\n",$3) }' | sort -nr | tail -$PERCENTILE | read result
+	echo  ", " $result
+done 
+rm tmp$$.phys.lpar
+exit
+
+# Example data and column numbering 
+1  LPAR,
+2  Logical Partition sapsprbbiwd,
+3  PhysicalCPU,
+4  virtualCPUs,
+5  logicalCPUs,
+6  poolCPUs,
+7  entitled,
+8  weight,
+9  PoolIdle,
+10 usedAllCPU%,
+11 usedPoolCPU%,
+12 SharedCPU,
+13 Capped,
+14 EC_User%,
+15 EC_Sys%,
+16 EC_Wait%,
+17 EC_Idle%,
+18 VP_User%,
+19 VP_Sys%,
+20 VP_Wait%,
+21 VP_Idle%,
+22 Folded,
+23 Pool_id
+
+LPAR,Logical Partition sapsprbbiwd,PhysicalCPU,virtualCPUs,logicalCPUs,poolCPUs,entitled,weight,PoolIdle,usedAllCPU%,usedPoolCPU%,SharedCPU,Capped,EC_User%,EC_Sys%,EC_Wait%,EC_Idle%,VP_User%,VP_Sys%,VP_Wait%,VP_Idle%,Folded,Pool_id
+LPAR,T0001,0.168,3,12,24,0.40,128,0.00,0.70,0.70,1,0,15.43,10.01,0.09,16.51,2.06,1.33,0.01,2.20,0,0
+LPAR,T0002,0.107,3,12,24,0.40,128,0.00,0.44,0.44,1,0,7.21,8.69,0.03,10.75,0.96,1.16,0.00,1.43,0,0
+LPAR,T0003,0.121,3,12,24,0.40,128,0.00,0.51,0.51,1,0,9.79,8.34,0.03,12.14,1.31,1.11,0.00,1.62,0,0
+LPAR,T0004,0.138,3,12,24,0.40,128,0.00,0.57,0.57,1,0,12.22,8.58,0.03,13.64,1.63,1.14,0.00,1.82,0,0
+LPAR,T0005,0.105,3,12,24,0.40,128,0.00,0.44,0.44,1,0,7.04,8.60,0.03,10.68,0.94,1.15,0.00,1.42,0,0
+LPAR,T0006,0.105,3,12,24,0.40,128,0.00,0.44,0.44,1,0,7.22,8.35,0.03,10.74,0.96,1.11,0.00,1.43,0,0
+LPAR,T0007,0.099,3,12,24,0.40,128,0.00,0.41,0.41,1,0,6.55,8.08,0.03,10.07,0.87,1.08,0.00,1.34,0,0

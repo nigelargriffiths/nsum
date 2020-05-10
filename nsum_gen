@@ -1,0 +1,54 @@
+#!/usr/bin/ksh
+echo nmonfile, nmonversion, AIXversion, time, date, interval, snapshots, CPUs-Max-Current, serialno, LPAR-Number-Name, MachineTypeModel, hardware-description
+for file in $*
+do
+	printf "%s " $file
+
+        head -25 $file >tmp$$.gen
+        tail -25 $file >>tmp$$.gen
+        grep AAA,AIX <tmp$$.gen >/dev/null
+        ret=$?
+        if (( $ret != 0 ))
+        then
+                echo "skipping not AIX"
+                continue
+        fi
+
+	cat tmp$$.gen | awk -F, '{  if($2 == "version")       { printf( ", %s", $3)};
+				if($2 == "AIX")           { printf( ", %s", $3)};
+				if($2 == "time")          { printf( ", %s", $3)};
+				if($2 == "date")          { printf( ", %s", $3)};
+				if($2 == "interval")      { printf( ", %s", $3)};
+				if($2 == "snapshots")     { printf( ", %s", $3)};
+				if($2 == "hardware")      { hardware=$3 };
+				if($2 == "cpus")          { printf( ", %s-%s", $3, $4)};
+				if($2 == "SerialNumber")  { printf( ", %s", $3)};
+				if($2 == "LPARNumberName"){ printf( ", %s-%s", $3, $4)};
+				if($2 == "MachineType")   { printf( ", %s-%s", $3, $4)}
+				 } END { printf(", %s\n",hardware) }'
+done | sed 's/Architecture PowerPC Implementation //'
+rm tmp$$.gen
+exit
+
+# Example data 
+AAA,progname,topas_nmon
+AAA,version,TOPAS-NMON
+AAA,build,AIX
+AAA,disks_per_line,150
+AAA,host,lake6
+AAA,user,root
+AAA,AIX,5.3.12.9
+AAA,TL,12
+AAA,runname,lake6
+AAA,time,16:35:32
+AAA,date,09-APR-2018
+AAA,interval,60
+AAA,snapshots,10
+AAA,hardware,Architecture PowerPC Implementation POWER6_in_P6_mode 64 bit
+AAA,cpus,32,16
+AAA,kernel, HW-type=CHRP=Common H/W Reference Platform Bus=PCI LPAR=Dynamic Multi-Processor 64 bit
+AAA,SerialNumber,558CE67
+AAA,LPARNumberName,81,lake6
+AAA,MachineType,IBM,9119-MME
+AAA,NodeName,lake6
+AAA,timestampsize,0

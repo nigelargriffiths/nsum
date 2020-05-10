@@ -1,0 +1,51 @@
+#!/usr/bin/ksh
+echo nmonfile, count, total_used, min_used, avg_used, max_used, 95percentileMB
+for file in $*
+do
+	printf "%s, " $file
+
+        head $file | grep AAA,AIX >/dev/null
+        ret=$?
+        if (( $ret != 0 ))
+        then
+                echo "skipping not AIX"
+                continue
+        fi
+
+	cat $file | grep ^MEM,T  >tmp$$.ram.lpar
+	ret=$?
+	if (( $ret != 0 ))
+	then
+		echo "skipping as no LPAR records found"
+		exit
+	fi
+
+	cat tmp$$.ram.lpar | awk -F , '
+	BEGIN { count=0; total=0.0; maxused=0.0; minused=9999999999.0; size=2.0; free=1.0; used=0.0 }
+	{ count=count+1; free=$5; size=$7; used=size-free; total=total+used; if(used < minused) { minused=used;}; if(used > maxused) { maxused=used;} }
+	END { printf( "%8d, %8.2f, %5.2f, %5.2f, %5.2f", count, total, minused, total/count, maxused) } '
+
+	integer RECORDS
+	integer PERCENTILE
+	RECORDS=`cat tmp$$.ram.lpar | wc -l `
+	PERCENTILE=$RECORDS-$RECORDS/20
+	cat tmp$$.ram.lpar | awk -F , '{ printf( " %5.2f\n",$7-$5) }' | sort -nr | tail -$PERCENTILE | read result
+	echo  ", " $result
+done
+rm tmp$$.ram.lpar
+exit
+
+# Example data and column numbering
+1 MEM,
+2 Memory hostname,
+3 Real Free %,
+4 Virtual free %,
+5 Real free(MB),
+6 Virtual free(MB),
+7 Real total(MB),
+8 Virtual total(MB)
+
+MEM,Memory sapsprbbiwd,Real Free %,Virtual free %,Real free(MB),Virtual free(MB),Real total(MB),Virtual total(MB)
+MEM,T0001,2.7,56.1,667.7,17226.8,24576.0,30720.0
+MEM,T0002,2.8,56.1,686.5,17226.8,24576.0,30720.0
+
