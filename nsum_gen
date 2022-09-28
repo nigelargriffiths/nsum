@@ -2,20 +2,22 @@
 echo nmonfile, nmonversion, AIXversion, time, date, interval, snapshots, CPUs-Max-Current, serialno, LPAR-Number-Name, MachineTypeModel, hardware-description
 for file in $*
 do
-	printf "%s " $file
+        printf "%s, " $( basename $file | sed 's/\.nmon//' )
+
 
         head -25 $file >tmp$$.gen
         tail -25 $file >>tmp$$.gen
-        grep AAA,AIX <tmp$$.gen >/dev/null
-        ret=$?
-        if (( $ret != 0 ))
-        then
-                echo "skipping not AIX"
-                continue
-        fi
+        grep ^AAA,AIX <tmp$$.gen >/dev/null
+	if (( $? == 0 ))
+	then
+		os=AIX
+	else
+		os=Linux
+	fi
 
-	cat tmp$$.gen | awk -F, '{  if($2 == "version")       { printf( ", %s", $3)};
+	cat tmp$$.gen | awk -F, '{  if($2 == "version")       { printf( " %s", $3)};
 				if($2 == "AIX")           { printf( ", %s", $3)};
+				if($2 == "OS")            { printf( ", %s-%s", $3,$4)};
 				if($2 == "time")          { printf( ", %s", $3)};
 				if($2 == "date")          { printf( ", %s", $3)};
 				if($2 == "interval")      { printf( ", %s", $3)};
@@ -25,12 +27,19 @@ do
 				if($2 == "SerialNumber")  { printf( ", %s", $3)};
 				if($2 == "LPARNumberName"){ printf( ", %s-%s", $3, $4)};
 				if($2 == "MachineType")   { printf( ", %s-%s", $3, $4)}
-				 } END { printf(", %s\n",hardware) }'
+				 } END { printf(", %s",hardware) }'
+	if [[ $os == Linux ]]
+	then
+	    grep ^BBBP $file | grep lparcfg | sed 's/=/,/g' | sed 's/"//g' >tmp$$.gen
+	    grep serial_number tmp$$.gen | awk -F,  '{ printf( "%s, -1", $6)}'
+	    grep system_type   tmp$$.gen | awk -F,  '{ printf( ", %s, POWER", $6)}'
+	fi
+	echo 
 done | sed 's/Architecture PowerPC Implementation //'
-rm tmp$$.gen
+rm -f tmp$$.gen
 exit
 
-# Example data 
+# AIX Example data 
 AAA,progname,topas_nmon
 AAA,version,TOPAS-NMON
 AAA,build,AIX
@@ -52,3 +61,115 @@ AAA,LPARNumberName,81,lake6
 AAA,MachineType,IBM,9119-MME
 AAA,NodeName,lake6
 AAA,timestampsize,0
+
+# Linux Example data 
+AAA,progname,nmon
+AAA,command,/usr/bin/nmon -F /var/nmon/sesosapl999_06022021.nmon -t -s 900 -c 96 
+AAA,version,16g
+AAA,disks_per_line,150
+AAA,max_disks,256,set by -d option
+AAA,disks,136,
+AAA,host,sesosapl999
+AAA,user,root
+AAA,OS,Linux,4.4.74-92.38-default,#1 SMP Tue Sep 12 19:43:46 UTC 2017 (545c055),ppc64le
+AAA,runname,sesosapl999
+AAA,time,00:01.01
+AAA,date,06-FEB-2021
+AAA,interval,900
+AAA,snapshots,96
+AAA,cpus,5,40
+AAA,CPU ID length,3
+AAA,proc_stat_variables,8
+AAA,boottime,11:37 AM 25-Jun-2019
+AAA,note0, Warning - use the UNIX sort command to order this file before loading into a spreadsheet
+AAA,note1, The First Column is simply to get the output sorted in the right order
+AAA,note2, The T0001-T9999 column is a snapshot number. To work out the actual time; see the ZZZ section at the end
+
+$ nsum_gen sesosapl999.nmon
+nmonfile, nmonversion, AIXversion, time, date, interval, snapshots, CPUs-Max-Current, serialno, LPAR-Number-Name, MachineTypeModel, hardware-description
+sesosapl999.nmon , 16g, 00:01.01, 06-FEB-2021, 900, 96, 5-40, 
+
+/home/nag/nmon_data/AZ/Server-9119-MHE-SN21E8F17/sesosapl999
+
+:r ~/bin/nsum_gen
+
+#!/usr/bin/ksh  
+
+tmpfile=tmp$$.lpar.stats
+
+echo nmonfile, snapshots, VP, E, VP:E, poolCPU, poolIdle, Weight, Capped, total, min, avg, max, 95percentile
+for file in $*
+do
+	printf "%s, " $( echo $file | sed 's/\.nmon//' )
+
+	head $file | grep AAA,AIX >/dev/null
+	if (( $? == 0 ))
+	then
+		os=AIX
+	else
+		os=Linux
+	fi
+
+	cat $file | grep ^LPAR,T  >$tmpfile
+	if (( $? != 0 ))
+	then
+		echo "error: $file skipping as no LPAR records found"
+		continue
+	fi 
+
+	if [[ $os == "AIX" ]]
+	then
+	cat $tmpfile | awk -F , '
+	BEGIN { count=0; total=0; max=0; min=99999999; VP=0.0; poolCPU=0; poolIdle=0; W=0; cap=0;  }
+	{ count=count+1; total=total+$3; VP=$4; LCPU=$5; poolCPU=$6; E=$7; W=$8; poolIdle=$9; cap=$13; if($3 > max) { max=$3;}; if($3 < min) { min=$3;} }
+	END { printf( "%8d, %3d, %5.2f, %5.2f%%, %3d, %5.2f, %3d, %d, %8.2f, %5.2f, %5.2f, %5.2f", count, VP, E, (VP/E)*100, poolCPU, poolIdle, W, cap, total, min, total/count, max) } '
+	else
+	cat $tmpfile  | awk -F , '
+	BEGIN { count=0; total=0; max=0; min=99999999; VP=0.0; poolCPU=0; poolIdle=0; W=0; cap=0;  }
+	{ count=count+1; total=total+$3; VP=$14; LCPU=$13; poolCPU=$8/100; E=$10; W=$16; poolIdle=$21; cap=$4; if($3 > max) { max=$3;}; if($3 < min) { min=$3;} }
+	END { printf( "%8d, %3d, %5.2f, %5.2f%%, %3d, %5.2f, %3d, %d, %8.2f, %5.2f, %5.2f, %5.2f", count, VP, E, (VP/E)*100, poolCPU, poolIdle, W, cap, total, min, total/count, max) } '
+	fi
+
+	integer RECORDS
+	integer PERCENTILE
+	RECORDS=`cat $tmpfile | wc -l `
+	PERCENTILE=$RECORDS-$RECORDS/20
+	cat $tmpfile | awk -F , '{ printf( " %5.2f\n",$3) }' | sort -nr | tail -$PERCENTILE | read result
+	echo  ", " $result
+done 
+rm -f $tmpfile
+exit
+
+# AIX Example data and column numbering 
+1  LPAR,
+2  Logical Partition sapsprbbiwd,
+3  PhysicalCPU,
+4  virtualCPUs,
+5  logicalCPUs,
+6  poolCPUs,
+7  entitled,
+8  weight,
+9  PoolIdle,
+10 usedAllCPU%,
+11 usedPoolCPU%,
+12 SharedCPU,
+13 Capped,
+14 EC_User%,
+15 EC_Sys%,
+16 EC_Wait%,
+17 EC_Idle%,
+18 VP_User%,
+19 VP_Sys%,
+20 VP_Wait%,
+21 VP_Idle%,
+22 Folded,
+23 Pool_id
+
+LPAR,Logical Partition sapsprbbiwd,PhysicalCPU,virtualCPUs,logicalCPUs,poolCPUs,entitled,weight,PoolIdle,usedAllCPU%,usedPoolCPU%,SharedCPU,Capped,EC_User%,EC_Sys%,EC_Wait%,EC_Idle%,VP_User%,VP_Sys%,VP_Wait%,VP_Idle%,Folded,Pool_id
+LPAR,T0001,0.168,3,12,24,0.40,128,0.00,0.70,0.70,1,0,15.43,10.01,0.09,16.51,2.06,1.33,0.01,2.20,0,0
+LPAR,T0002,0.107,3,12,24,0.40,128,0.00,0.44,0.44,1,0,7.21,8.69,0.03,10.75,0.96,1.16,0.00,1.43,0,0
+LPAR,T0003,0.121,3,12,24,0.40,128,0.00,0.51,0.51,1,0,9.79,8.34,0.03,12.14,1.31,1.11,0.00,1.62,0,0
+LPAR,T0004,0.138,3,12,24,0.40,128,0.00,0.57,0.57,1,0,12.22,8.58,0.03,13.64,1.63,1.14,0.00,1.82,0,0
+LPAR,T0005,0.105,3,12,24,0.40,128,0.00,0.44,0.44,1,0,7.04,8.60,0.03,10.68,0.94,1.15,0.00,1.42,0,0
+LPAR,T0006,0.105,3,12,24,0.40,128,0.00,0.44,0.44,1,0,7.22,8.35,0.03,10.74,0.96,1.11,0.00,1.43,0,0
+LPAR,T0007,0.099,3,12,24,0.40,128,0.00,0.41,0.41,1,0,6.55,8.08,0.03,10.07,0.87,1.08,0.00,1.34,0,0

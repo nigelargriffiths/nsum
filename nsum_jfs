@@ -1,0 +1,33 @@
+#!/usr/bin/ksh
+
+TMP=tmp$$.jfs
+
+for file in $*
+do
+        printf "%s:, \n" $( basename $file | sed 's/\.nmon//' )
+
+	grep "df -m," <$file | \
+	grep -v "/proc" | \
+	sed 's/BBBP,[0-9]*,ending df -m,//' | \
+	sed 's/"$//' | \
+	sed 's/"F/F/' | \
+	sed 's?"d?/?' | \
+	sed 's/MB blocks/MBblocks/' | \
+	sed 's/Mounted on/MountedOn/' | \
+	sed 's/% / /g' | \
+	awk '{printf("\t, \"%s\",%s,%s,%s,%s,%s,\"%s\"\n",$1,$2,$3,$4,$5,$6,$7) }'
+
+	echo 
+done
+
+exit
+
+BBBP,1727,ending df -m
+BBBP,1728,ending df -m,"Filesystem    MB blocks      Free %Used    Iused %Iused Mounted on"
+BBBP,1729,ending df -m,"ddev/hd4        1152.00    741.12   36%    18124    10% /"
+BBBP,1730,ending df -m,"ddev/hd2        3200.00    552.77   83%    55058    30% /usr"
+BBBP,1731,ending df -m,"ddev/hd9var     3072.00   2510.75   19%     3792     1% /var"
+BBBP,1732,ending df -m,"ddev/hd3        1024.00   1008.99    2%      195     1% /tmp"
+BBBP,1733,ending df -m,"ddev/hd1        1024.00   1023.00    1%       94     1% /home"
+BBBP,1734,ending df -m,"ddev/hd11admin   1024.00   1023.49    1%        7     1% /admin"
+       

@@ -1,0 +1,39 @@
+#!/usr/bin/ksh
+
+#IOADAPT,Disk Adapter pbasbsllpw008,vscsi7_read-KB/s,vscsi7_write-KB/s,vscsi7_xfer-tps,vscsi3_read-KB/s,vscsi3_write-KB/s,vscsi3_xfer-tps,vscsi6_read-KB/s,vscsi6_write-KB/s,vscsi6_xfer-tps,vscsi2_read-KB/s,vscsi2_write-KB/s,vscsi2_xfer-tps,vscsi5_read-KB/s,vscsi5_write-KB/s,vscsi5_xfer-tps,vscsi1_read-KB/s,vscsi1_write-KB/s,vscsi1_xfer-tps,vscsi4_read-KB/s,vscsi4_write-KB/s,vscsi4_xfer-tps,vscsi0_read-KB/s,vscsi0_write-KB/s,vscsi0_xfer-tps,fcs2_read-KB/s,fcs2_write-KB/s,fcs2_xfer-tps,fcs0_read-KB/s,fcs0_write-KB/s,fcs0_xfer-tps,fcs6_read-KB/s,fcs6_write-KB/s,fcs6_xfer-tps,fcs4_read-KB/s,fcs4_write-KB/s,fcs4_xfer-tps,fcs7_read-KB/s,fcs7_write-KB/s,fcs7_xfer-tps,fcs5_read-KB/s,fcs5_write-KB/s,fcs5_xfer-tps
+
+#IOADAPT,T0001,0.0,19.8,3.5,0.0,0.0,0.0,0.0,0.0,0.0,69.9,19.8,4.4,0.0,38.6,6.8,0.0,0.0,0.0,28.1,38.6,7.0,0.0,0.0,0.1,76857.6,436.7,1211.1,76857.6,436.7,1214.5,13646.6,736.9,223.5,13537.4,736.9,223.5,30350.0,5567.8,522.0,30131.7,5458.6,522.0 
+
+
+tmpfile=tmp$$.ioa.stats
+
+echo nmonfile, FC-adapter-ports, readKB95, writeKB95 xfer95
+
+for file in $*
+do
+        printf "%s, " $( basename $file | sed 's/\.nmon//' )
+
+	grep ^IOADAPT,T $file | \
+
+	awk -F, '{ rsum=0.0; wsum=0.0; xfer=0.0; \
+		for (i=3; i<=NF; i=i+3) { rsum +=$i; wsum +=$(i+1); xfer +=$(i+2) } \
+		printf("%d,%.1f,%.1f,%.1f\n", (NF-2)/3, rsum, wsum, xfer) }' >$tmpfile
+	
+        integer RECORDS
+        integer PERCENTILE
+        RECORDS=$(cat $tmpfile | wc -l)
+        PERCENTILE=$RECORDS-$RECORDS/20
+	readKB=0.0
+	writeKB=0.0
+	xfer=0.0
+        cat $tmpfile | awk -F, '{ printf(" %d\n",$2) }' | sort -nr | tail -$PERCENTILE | read readKB
+        cat $tmpfile | awk -F, '{ printf(" %d\n",$3) }' | sort -nr | tail -$PERCENTILE | read writeKB
+        cat $tmpfile | awk -F, '{ printf(" %d\n",$4) }' | sort -nr | tail -$PERCENTILE | read xfer
+
+	head $tmpfile| awk -F, '{ printf(" %d\n",$1) }' | read nets
+        
+        printf "%d, %.1f,%.1f, %.1f\n" $nets $readKB $writeKB $xfer
+
+	rm -fr $tmpfile
+done
+

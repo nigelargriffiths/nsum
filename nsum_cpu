@@ -1,43 +1,62 @@
 #!/usr/bin/ksh  
 
-echo nmonfile, snapshots, VP, E, VP:E, poolCPU, poolIdle, Weight, Capped, total, min, avg, max, 95percentile
+tmpfile=tmp$$.lpar.stats
+
+echo nmonfile, snapshots, VP, E, VP:E, poolCPU, poolIdle, Weight, Capped, total, min, avg, max, 95percentile RunQueue95
 for file in $*
 do
-	printf "%s, " $file
+	printf "%s, " $( basename $file | sed 's/\.nmon//' )
 
 	head $file | grep AAA,AIX >/dev/null
-	ret=$?
-	if (( $ret != 0 ))
+	if (( $? == 0 ))
 	then
-		echo "skipping not AIX"
-		continue
+		os=AIX
+	else
+		os=Linux
 	fi
 
-	cat $file | grep ^LPAR,T  >tmp$$.phys.lpar
-	ret=$?
-	if (( $ret != 0 ))
+	cat $file | grep ^LPAR,T  >$tmpfile
+	if (( $? != 0 ))
 	then
-		echo "skipping as no LPAR records found"
+		echo "error: $file skipping as no LPAR records found"
 		continue
 	fi 
 
-	cat tmp$$.phys.lpar | awk -F , '
+	if [[ $os == "AIX" ]]
+	then
+	cat $tmpfile | awk -F , '
 	BEGIN { count=0; total=0; max=0; min=99999999; VP=0.0; poolCPU=0; poolIdle=0; W=0; cap=0;  }
 	{ count=count+1; total=total+$3; VP=$4; LCPU=$5; poolCPU=$6; E=$7; W=$8; poolIdle=$9; cap=$13; if($3 > max) { max=$3;}; if($3 < min) { min=$3;} }
-	END { printf( "%8d, %3d, %5.2f, %5.2f%%, %3d, %5.2f, %3d, %d, %8.2f, %5.2f, %5.2f, %5.2f", count, VP, E, (VP/E)*100, poolCPU, poolIdle, W, cap, total, min, total/count, max ) } '
-
+	END { printf( "%8d, %3d, %5.2f, %5.2f%%, %3d, %5.2f, %3d, %d, %8.2f, %5.2f, %5.2f, %5.2f", count, VP, E, (VP/E)*100, poolCPU, poolIdle, W, cap, total, min, total/count, max) } '
+	else
+	cat $tmpfile  | awk -F , '
+	BEGIN { count=0; total=0; max=0; min=99999999; VP=0.0; poolCPU=0; poolIdle=0; W=0; cap=0;  }
+	{ count=count+1; total=total+$3; VP=$14; LCPU=$13; poolCPU=$8/100; E=$10; W=$16; poolIdle=$21; cap=$4; if($3 > max) { max=$3;}; if($3 < min) { min=$3;} }
+	END { printf( "%8d, %3d, %5.2f, %5.2f%%, %3d, %5.2f, %3d, %d, %8.2f, %5.2f, %5.2f, %5.2f", count, VP, E, (VP/E)*100, poolCPU, poolIdle, W, cap, total, min, total/count, max) } '
+	fi
 
 	integer RECORDS
 	integer PERCENTILE
-	RECORDS=`cat tmp$$.phys.lpar | wc -l `
+	RECORDS=`cat $tmpfile | wc -l `
 	PERCENTILE=$RECORDS-$RECORDS/20
-	cat tmp$$.phys.lpar | awk -F , '{ printf( " %5.2f\n",$3) }' | sort -nr | tail -$PERCENTILE | read result
-	echo  ", " $result
+	cat $tmpfile | awk -F , '{ printf( " %5.2f\n",$3) }' | sort -nr | tail -$PERCENTILE | read result
+
+
+        cat $file | grep ^PROC,T >$tmpfile
+
+        integer RECORDS
+        integer PERCENTILE
+        RECORDS=`cat $tmpfile | wc -l `
+        PERCENTILE=$RECORDS-$RECORDS/20
+
+        cat $tmpfile | awk -F, '{ printf( " %d\n",$3) }' | sort -nr | tail -$PERCENTILE | read rq
+
+	echo  ", "$result", "$rq
 done 
-rm tmp$$.phys.lpar
+rm -f $tmpfile
 exit
 
-# Example data and column numbering 
+# AIX Example data and column numbering 
 1  LPAR,
 2  Logical Partition sapsprbbiwd,
 3  PhysicalCPU,
